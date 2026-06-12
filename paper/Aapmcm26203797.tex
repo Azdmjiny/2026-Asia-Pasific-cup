@@ -1,15 +1,17 @@
-% !TEX program = xelatex
-% 2026 APMCM 中文赛项 A题论文基础框架
-% 编译方式：XeLaTeX 或 latexmk -xelatex
-% 注意：摘要页和正文不得出现参赛者个人信息。队号请填写赛氪报名编号 apmcm262*****。
-
+% !TeX program = xelatex
 \documentclass[UTF8,zihao=-4]{ctexart}
+
+% =========================================================
+% 2026 APMCM 中文赛项 A题论文 LaTeX 模板
+% 编译方式：XeLaTeX
+% 注意：摘要页和正文不得出现队员姓名、学校、邮箱、学号等个人信息
+% =========================================================
 
 % -------------------- 页面与基础格式 --------------------
 \usepackage[a4paper,left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm]{geometry}
 \usepackage{setspace}
 \usepackage{amsmath,amssymb,bm}
-\usepackage{booktabs,longtable,array,multirow}
+\usepackage{booktabs,longtable,array,multirow,tabularx}
 \usepackage{graphicx}
 \usepackage{float}
 \usepackage{caption}
@@ -18,45 +20,62 @@
 \usepackage{fancyhdr}
 \usepackage{hyperref}
 \usepackage{xcolor}
+\usepackage{xurl}
 \usepackage{listings}
 
-\setstretch{1.0} % 单倍行距
-\setlength{\parindent}{2em}
+% -------------------- 基本排版 --------------------
+\setstretch{1.0}                 % 单倍行距
+\setlength{\parindent}{2em}      % 首行缩进
 \setlength{\parskip}{0pt}
+\emergencystretch=2em            % 降低 overfull hbox 概率
+\sloppy
 \hypersetup{hidelinks}
 
-% 图表标题格式
+% -------------------- 图表标题格式 --------------------
 \captionsetup[figure]{name=图,labelsep=space,font=small}
 \captionsetup[table]{name=表,labelsep=space,font=small}
 
-% 页眉页脚：正文可保留页码，不写个人信息
+% -------------------- 页眉页脚 --------------------
 \pagestyle{fancy}
 \fancyhf{}
 \cfoot{\thepage}
 \renewcommand{\headrulewidth}{0pt}
 
-% 代码环境，可用于附录
+% -------------------- 表格列格式 --------------------
+\newcolumntype{Y}{>{\centering\arraybackslash}X}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+
+% -------------------- 代码环境 --------------------
 \lstset{
   basicstyle=\ttfamily\small,
   breaklines=true,
   frame=single,
-  columns=fullflexible
+  columns=fullflexible,
+  numbers=left,
+  numberstyle=\tiny,
+  keywordstyle=\color{blue},
+  commentstyle=\color{gray},
+  stringstyle=\color{teal}
 }
 
 % -------------------- 自定义命令 --------------------
-\newcommand{\teamid}{apmcm26203797} % TODO: 替换为正式队号
+\newcommand{\teamid}{apmcm26203797} % 修改为正式队号
 \newcommand{\problemid}{A}
 \newcommand{\papertitle}{基于时滞识别与机理--数据融合的自来水厂水浊度预测及风险评估模型}
 
+% =========================================================
 \begin{document}
 
-% -------------------- 摘要首页 --------------------
+% =========================================================
+% 摘要首页
+% =========================================================
+
 \begin{center}
-\begin{tabular}{|p{0.18\textwidth}|p{0.25\textwidth}|p{0.22\textwidth}|p{0.25\textwidth}|}
+\begin{tabularx}{0.95\textwidth}{|Y|Y|Y|Y|}
 \hline
-选题 & \centering \problemid & 参赛编号 & \centering \teamid \tabularnewline
+选题 & \problemid & 参赛编号 & \teamid \\
 \hline
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 \vspace{1.2em}
@@ -73,14 +92,17 @@
 
 针对自来水厂原水水质波动、工艺控制滞后以及出厂水浊度达标风险等问题，本文基于连续多月份的多变量运行监测数据，建立水浊度预测与风险评价的综合建模框架。首先，对原始数据进行时间重构、缺失值处理、异常值识别和变量标准化，形成统一的多变量时间序列数据集。其次，针对出厂水浊度的影响因素识别问题，采用相关性分析、滞后特征构造、XGBoost 回归模型和 SHAP 解释方法，筛选主要影响变量并分析其作用方向。然后，针对滤后水浊度受原水浊度、原水 pH、矾投加量和原水流量等因素滞后影响的问题，构建基于滞后特征的动态预测模型，并估计不同变量的最优时滞参数。进一步地，结合清水池水位和出厂水流量构造近似水力停留时间特征，将其引入 GRU 多步预测模型，实现未来 1--12 小时出厂水浊度预测。最后，以生活饮用水浊度限值 $NTU\leq 1$ 为约束，综合超标幅度、异常持续时间和浊度波动程度，建立水质风险评价指标体系，将 2026 年近三个月水质划分为安全、低风险、中风险和高风险四类。
 
-\textbf{结果方面，}本文将补充主要影响因素排序、指定日期预测结果、滤后水浊度模型拟合精度、未来 1--12 小时多步预测误差以及 2026 年 1--3 月风险等级占比。结果表明，本文模型能够刻画水处理过程中的非线性与时滞特征，并可为水厂工艺调控和水质风险预警提供定量依据。
+结果方面，本文将补充主要影响因素排序、指定日期预测结果、滤后水浊度模型拟合精度、未来 1--12 小时多步预测误差以及 2026 年 1--3 月风险等级占比。结果表明，本文模型能够刻画水处理过程中的非线性与时滞特征，并可为水厂工艺调控和水质风险预警提供定量依据。
 
 \vspace{1em}
 \noindent\textbf{关键词：} 水浊度预测；时滞识别；机理--数据融合；XGBoost；GRU；水质风险评价
 
 \newpage
 
-% -------------------- 正文开始 --------------------
+% =========================================================
+% 正文
+% =========================================================
+
 \section{问题重述}
 
 自来水厂生产过程包括取水、混凝、沉淀、过滤、消毒和出厂输送等多个环节。原水浊度、原水 pH、原水流量、矾投加量、滤后水浊度、清水池水位和出厂水流量等变量共同影响最终出厂水浊度。由于混凝反应、过滤过程和清水池调蓄作用均具有时间延迟，当前出厂水质并不完全由当前原水状态决定，而是受过去若干时刻水质和工艺参数共同影响。
@@ -158,7 +180,7 @@ $R^2$ & 决定系数 \\
 
 \subsection{异常值识别}
 
-考虑到高浊度点可能对应真实水质风险事件，本文不简单删除所有异常峰值，而是区分传感器噪声和风险异常。对于明显不合理的录入错误进行修正或剔除；对于可能反映水质波动的高 $NTU$ 观测值，保留并在风险评价模型中使用。
+考虑到高浊度点可能对应真实水质风险事件，本文不简单删除所有异常峰值，而是区分传感器噪声和风险异常。对于明显不合理的录入错误进行修正或剔除；对于可能反映水质波动的高 $NTU$ 观测值，保留并在风险评价模型中使用。对于原始 Excel 表中少量人工高亮的单元格，本文不直接判定其为异常值，而是保留原始数值，并设置高亮标记变量用于数据质量分析。
 
 \subsection{滞后特征构造}
 
@@ -176,19 +198,19 @@ $R^2$ & 决定系数 \\
 \begin{table}[H]
 \centering
 \caption{候选变量及物理含义}
-\begin{tabular}{lll}
+\begin{tabularx}{0.95\textwidth}{l l L}
 \toprule
 变量 & 中文含义 & 建模作用 \\
 \midrule
-$R/W\ NTU$ & 原水浊度 & 主要输入变量 \\
-$R/W\ PH$ & 原水 pH & 混凝效果影响变量 \\
-$R/W\ FLOW$ & 原水流量 & 水力状态变量 \\
-$FILT.NTU$ & 滤后水浊度 & 中间水质变量 \\
-$ALUM$ & 矾投加量 & 工艺控制变量 \\
-$C/W\ WELL\ LEVEL$ & 清水池水位 & 水力停留相关变量 \\
-$T/W\ FLOW$ & 出厂水流量 & 水力停留相关变量 \\
+$R/W\ NTU$ & 原水浊度 & 主要输入变量，反映进入处理系统的颗粒污染负荷 \\
+$R/W\ PH$ & 原水 pH & 影响混凝剂作用效果，可能具有非线性影响 \\
+$R/W\ FLOW$ & 原水流量 & 影响处理负荷和水力停留状态 \\
+$FILT.NTU$ & 滤后水浊度 & 反映过滤前后处理效果，是出厂水浊度的重要中间变量 \\
+$ALUM$ & 矾投加量 & 工艺控制变量，对浊度变化具有滞后调节作用 \\
+$C/W\ WELL\ LEVEL$ & 清水池水位 & 与清水池调蓄和水力停留过程相关 \\
+$T/W\ FLOW$ & 出厂水流量 & 与出厂输送负荷和停留时间相关 \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
 \subsection{相关性分析与滞后相关性分析}
@@ -393,7 +415,7 @@ GRU 通过更新门和重置门刻画历史序列信息，其基本结构为
 \begin{table}[H]
 \centering
 \caption{水质风险等级划分标准}
-\begin{tabular}{lll}
+\begin{tabularx}{0.95\textwidth}{l L L}
 \toprule
 风险等级 & 判定依据 & 含义 \\
 \midrule
@@ -402,7 +424,7 @@ GRU 通过更新门和重置门刻画历史序列信息，其基本结构为
 中风险 & 短时超标或波动明显 & 需要采取调控措施 \\
 高风险 & 持续超标或严重异常 & 需要立即干预 \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
 \subsection{2026 年近三个月风险评价结果}
@@ -431,7 +453,7 @@ GRU 通过更新门和重置门刻画历史序列信息，其基本结构为
 \midrule
 2026-03-01 &  &  &  &  \\
 2026-03-02 &  &  &  &  \\
-\multicolumn{5}{c}{\textit{此处补充 3 月完整日期结果}} \\
+\multicolumn{5}{c}{\kaishu 此处补充 3 月完整日期结果} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -462,13 +484,51 @@ GRU 通过更新门和重置门刻画历史序列信息，其基本结构为
 本文围绕自来水厂水浊度预测与风险评估问题，构建了从数据预处理、影响因素筛选、时滞动态建模、多步预测到风险分级的完整建模框架。后续将在完成数据清洗和模型训练后，补充各问题的具体数值结果、预测表格和图形分析。
 
 \newpage
+
+% =========================================================
+% 参考文献
+% =========================================================
+
 \begin{thebibliography}{99}
-\bibitem{ref1} 作者，书名，出版地：出版社，出版年。
-\bibitem{ref2} 作者，论文名，期刊名，卷号(期号)：起止页码，出版年。
-\bibitem{ref3} 作者，资源标题，网址，访问时间。
+
+\bibitem{gb5749}
+国家市场监督管理总局，中国国家标准化管理委员会．生活饮用水卫生标准：GB 5749--2022[S]．北京：中国标准出版社，2022．
+
+\bibitem{qasim}
+Qasim S R, Motley E M, Zhu G. Water Works Engineering: Planning, Design and Operation[M]. Upper Saddle River: Prentice Hall, 2000.
+
+\bibitem{box}
+Box G E P, Jenkins G M, Reinsel G C, Ljung G M. Time Series Analysis: Forecasting and Control[M]. 5th ed. Hoboken: Wiley, 2015.
+
+\bibitem{breiman}
+Breiman L. Random Forests[J]. Machine Learning, 2001, 45(1): 5--32.
+
+\bibitem{xgboost}
+Chen T, Guestrin C. XGBoost: A Scalable Tree Boosting System[C]. Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, 2016: 785--794.
+
+\bibitem{shap}
+Lundberg S M, Lee S I. A Unified Approach to Interpreting Model Predictions[C]. Advances in Neural Information Processing Systems, 2017, 30: 4765--4774.
+
+\bibitem{gru}
+Cho K, van Merrienboer B, Gulcehre C, Bahdanau D, Bougares F, Schwenk H, Bengio Y. Learning Phrase Representations using RNN Encoder--Decoder for Statistical Machine Translation[C]. Proceedings of EMNLP, 2014: 1724--1734.
+
+\bibitem{lstm}
+Hochreiter S, Schmidhuber J. Long Short-Term Memory[J]. Neural Computation, 1997, 9(8): 1735--1780.
+
+\bibitem{hyndman}
+Hyndman R J, Athanasopoulos G. Forecasting: Principles and Practice[M/OL]. 3rd ed. Melbourne: OTexts, 2021. \url{https://otexts.com/fpp3/}，访问时间：2026年6月12日.
+
+\bibitem{goodfellow}
+Goodfellow I, Bengio Y, Courville A. Deep Learning[M]. Cambridge: MIT Press, 2016.
+
 \end{thebibliography}
 
 \newpage
+
+% =========================================================
+% 附录
+% =========================================================
+
 \appendix
 \section{附录：程序代码与补充结果}
 
@@ -478,6 +538,7 @@ GRU 通过更新门和重置门刻画历史序列信息，其基本结构为
 \end{lstlisting}
 
 \subsection{完整预测结果表}
+
 此处放置问题一、问题三和问题四中篇幅较长的完整预测结果表。
 
 \end{document}
