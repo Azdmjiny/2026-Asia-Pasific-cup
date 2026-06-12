@@ -84,14 +84,6 @@ predictions/
 cleaned_data/
 
 # =========================
-# Raw competition data
-# 建议不要上传原始附件数据，避免泄露或仓库过大
-# =========================
-data/raw/
-*.xls
-*.xlsx
-
-# =========================
 # But allow table templates if needed
 # =========================
 !templates/*.xlsx
