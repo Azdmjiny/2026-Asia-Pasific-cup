@@ -1,0 +1,483 @@
+% !TEX program = xelatex
+% 2026 APMCM 中文赛项 A题论文基础框架
+% 编译方式：XeLaTeX 或 latexmk -xelatex
+% 注意：摘要页和正文不得出现参赛者个人信息。队号请填写赛氪报名编号 apmcm262*****。
+
+\documentclass[UTF8,zihao=-4]{ctexart}
+
+% -------------------- 页面与基础格式 --------------------
+\usepackage[a4paper,left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm]{geometry}
+\usepackage{setspace}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{booktabs,longtable,array,multirow}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+
+\setstretch{1.0} % 单倍行距
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0pt}
+\hypersetup{hidelinks}
+
+% 图表标题格式
+\captionsetup[figure]{name=图,labelsep=space,font=small}
+\captionsetup[table]{name=表,labelsep=space,font=small}
+
+% 页眉页脚：正文可保留页码，不写个人信息
+\pagestyle{fancy}
+\fancyhf{}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+
+% 代码环境，可用于附录
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible
+}
+
+% -------------------- 自定义命令 --------------------
+\newcommand{\teamid}{apmcm26203797} % TODO: 替换为正式队号
+\newcommand{\problemid}{A}
+\newcommand{\papertitle}{基于时滞识别与机理--数据融合的自来水厂水浊度预测及风险评估模型}
+
+\begin{document}
+
+% -------------------- 摘要首页 --------------------
+\begin{center}
+\begin{tabular}{|p{0.18\textwidth}|p{0.25\textwidth}|p{0.22\textwidth}|p{0.25\textwidth}|}
+\hline
+选题 & \centering \problemid & 参赛编号 & \centering \teamid \tabularnewline
+\hline
+\end{tabular}
+\end{center}
+
+\vspace{1.2em}
+
+\begin{center}
+{\heiti\zihao{3}\papertitle}
+\end{center}
+
+\vspace{1em}
+
+\begin{center}
+{\heiti\zihao{4} 摘要}
+\end{center}
+
+针对自来水厂原水水质波动、工艺控制滞后以及出厂水浊度达标风险等问题，本文基于连续多月份的多变量运行监测数据，建立水浊度预测与风险评价的综合建模框架。首先，对原始数据进行时间重构、缺失值处理、异常值识别和变量标准化，形成统一的多变量时间序列数据集。其次，针对出厂水浊度的影响因素识别问题，采用相关性分析、滞后特征构造、XGBoost 回归模型和 SHAP 解释方法，筛选主要影响变量并分析其作用方向。然后，针对滤后水浊度受原水浊度、原水 pH、矾投加量和原水流量等因素滞后影响的问题，构建基于滞后特征的动态预测模型，并估计不同变量的最优时滞参数。进一步地，结合清水池水位和出厂水流量构造近似水力停留时间特征，将其引入 GRU 多步预测模型，实现未来 1--12 小时出厂水浊度预测。最后，以生活饮用水浊度限值 $NTU\leq 1$ 为约束，综合超标幅度、异常持续时间和浊度波动程度，建立水质风险评价指标体系，将 2026 年近三个月水质划分为安全、低风险、中风险和高风险四类。
+
+\textbf{结果方面，}本文将补充主要影响因素排序、指定日期预测结果、滤后水浊度模型拟合精度、未来 1--12 小时多步预测误差以及 2026 年 1--3 月风险等级占比。结果表明，本文模型能够刻画水处理过程中的非线性与时滞特征，并可为水厂工艺调控和水质风险预警提供定量依据。
+
+\vspace{1em}
+\noindent\textbf{关键词：} 水浊度预测；时滞识别；机理--数据融合；XGBoost；GRU；水质风险评价
+
+\newpage
+
+% -------------------- 正文开始 --------------------
+\section{问题重述}
+
+自来水厂生产过程包括取水、混凝、沉淀、过滤、消毒和出厂输送等多个环节。原水浊度、原水 pH、原水流量、矾投加量、滤后水浊度、清水池水位和出厂水流量等变量共同影响最终出厂水浊度。由于混凝反应、过滤过程和清水池调蓄作用均具有时间延迟，当前出厂水质并不完全由当前原水状态决定，而是受过去若干时刻水质和工艺参数共同影响。
+
+本文需要基于给定的多变量时间序列数据，完成以下四项任务：
+\begin{enumerate}[label=（\arabic*）]
+  \item 筛选影响出厂水浊度 $NTU$ 的主要因素，解释各因素影响程度和作用方向，并预测 2026 年 2 月 1 日、2 月 10 日、2 月 20 日的水浊度；
+  \item 建立滤后水浊度 $FILT.NTU$ 的动态时滞模型，描述原水指标和操作变量对滤后水浊度的滞后影响，并估计不同变量的时滞参数；
+  \item 结合质量守恒思想和数据驱动方法，建立未来 1--12 小时出厂水浊度预测模型，并给出指定日期 7:00 至 19:00 的预测结果；
+  \item 以 $NTU\leq 1$ 为硬性约束，结合超标幅度和异常持续时间，建立水质风险评价体系，对 2026 年近三个月水质进行风险分级。
+\end{enumerate}
+
+\section{问题分析}
+
+本题本质上是一个具有多变量耦合、非线性响应和时间滞后的水处理过程建模问题。若直接采用普通静态回归模型，容易忽略矾投加、原水浊度变化和清水池调蓄对出厂水浊度的滞后影响；若仅采用深度学习模型，则解释性不足，难以说明不同变量的影响方向和作用机制。因此，本文采用“数据预处理--滞后特征构造--机器学习解释--动态预测--风险评价”的整体建模路线。
+
+\begin{figure}[H]
+  \centering
+  \fbox{\parbox{0.88\textwidth}{\centering
+  原始数据 $\rightarrow$ 时间重构与数据清洗 $\rightarrow$ 缺失值和异常值处理 $\rightarrow$ 滞后特征构造\\[0.5em]
+  $\rightarrow$ 问题一：影响因素筛选与出厂水 NTU 预测\\[0.5em]
+  $\rightarrow$ 问题二：$FILT.NTU$ 时滞动态模型\\[0.5em]
+  $\rightarrow$ 问题三：机理--数据融合多步预测模型\\[0.5em]
+  $\rightarrow$ 问题四：水质风险评价模型}}
+  \caption{水浊度预测与风险评价总体建模流程}
+  \label{fig:framework}
+\end{figure}
+
+\section{模型假设}
+
+\begin{enumerate}[label=假设\arabic*：]
+  \item 经过缺失值处理和异常值标记后的监测数据能够反映水厂主要运行规律。
+  \item 原水水质和工艺操作变量对滤后水、出厂水浊度的影响存在有限时滞，且主要时滞范围不超过 24 小时。
+  \item 清水池调蓄作用可由清水池水位和出厂水流量构造的近似水力停留时间特征表征。
+  \item 短时传感器噪声不会改变水处理过程中的主要动态关系。
+  \item 以生活饮用水浊度限值 $NTU\leq 1$ 作为判断出厂水是否超标的统一标准。
+\end{enumerate}
+
+\section{符号说明}
+
+\begin{table}[H]
+\centering
+\caption{主要符号说明}
+\begin{tabular}{cl}
+\toprule
+符号 & 含义 \\
+\midrule
+$t$ & 时间序号 \\
+$h$ & 预测步长 \\
+$y_t$ & $t$ 时刻出厂水浊度 $NTU$ \\
+$z_t$ & $t$ 时刻滤后水浊度 $FILT.NTU$ \\
+$x_{i,t}$ & 第 $i$ 个输入变量在 $t$ 时刻的观测值 \\
+$\tau_i$ & 第 $i$ 个变量的最优时滞 \\
+$HRT_t$ & $t$ 时刻近似水力停留时间特征 \\
+$E_t$ & 超标幅度 \\
+$D_t$ & 连续异常持续时间 \\
+$V_t$ & 浊度波动指标 \\
+$R_t$ & 综合风险指数 \\
+$RMSE$ & 均方根误差 \\
+$MAE$ & 平均绝对误差 \\
+$R^2$ & 决定系数 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{数据预处理}
+
+\subsection{数据整合与时间重构}
+
+原始数据由多个按月份记录的表格构成，每日记录多个监测时刻。为保证时间序列建模的有效性，首先统一各月份表头，将空白、短横线等非数值字符转化为缺失值，并将水质指标和工艺参数统一转换为数值型变量。随后根据文件月份、日期列和时间列重构标准时间戳 $datetime$，并按时间升序合并为总数据表。
+
+\subsection{缺失值处理}
+
+对于缺失率较低且具有连续时间特征的变量，采用线性插值或前向填充方法；对于缺失率较高的变量，在问题一和问题三中作为辅助变量处理，在问题二中根据建模需要建立完整变量模型和稳健变量模型两套方案。
+
+\subsection{异常值识别}
+
+考虑到高浊度点可能对应真实水质风险事件，本文不简单删除所有异常峰值，而是区分传感器噪声和风险异常。对于明显不合理的录入错误进行修正或剔除；对于可能反映水质波动的高 $NTU$ 观测值，保留并在风险评价模型中使用。
+
+\subsection{滞后特征构造}
+
+由于数据采样间隔为 2 小时，本文对核心变量构造 1--12 阶滞后特征，即最大滞后时间为 24 小时。对任意输入变量 $x_i$，其第 $k$ 阶滞后特征表示为
+\begin{equation}
+  x_{i,t-k}, \qquad k=1,2,\ldots,12 .
+\end{equation}
+
+\section{问题一：主要影响因素筛选与出厂水浊度预测模型}
+
+\subsection{候选影响因素选取}
+
+结合水处理工艺机理和数据字段，选取原水浊度、原水 pH、原水流量、滤后水浊度、矾投加量、清水池水位和出厂水流量等变量作为候选影响因素。
+
+\begin{table}[H]
+\centering
+\caption{候选变量及物理含义}
+\begin{tabular}{lll}
+\toprule
+变量 & 中文含义 & 建模作用 \\
+\midrule
+$R/W\ NTU$ & 原水浊度 & 主要输入变量 \\
+$R/W\ PH$ & 原水 pH & 混凝效果影响变量 \\
+$R/W\ FLOW$ & 原水流量 & 水力状态变量 \\
+$FILT.NTU$ & 滤后水浊度 & 中间水质变量 \\
+$ALUM$ & 矾投加量 & 工艺控制变量 \\
+$C/W\ WELL\ LEVEL$ & 清水池水位 & 水力停留相关变量 \\
+$T/W\ FLOW$ & 出厂水流量 & 水力停留相关变量 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{相关性分析与滞后相关性分析}
+
+首先采用 Pearson 相关系数和 Spearman 相关系数分析各变量与出厂水浊度之间的线性和单调关系。对于变量 $x_i$ 与目标变量 $y$，Pearson 相关系数为
+\begin{equation}
+  r_{x_i,y}=\frac{\sum_{t=1}^{n}(x_{i,t}-\bar{x}_i)(y_t-\bar{y})}
+  {\sqrt{\sum_{t=1}^{n}(x_{i,t}-\bar{x}_i)^2}\sqrt{\sum_{t=1}^{n}(y_t-\bar{y})^2}} .
+\end{equation}
+
+进一步地，对不同滞后阶数下的变量与目标变量计算相关性，以识别潜在时滞影响。
+
+\subsection{基于 XGBoost 的出厂水浊度预测模型}
+
+为刻画输入变量与出厂水浊度之间的非线性关系，本文建立 XGBoost 回归模型。模型输入为当前变量及其滞后特征，输出为出厂水浊度 $y_t$。模型预测形式为
+\begin{equation}
+  \hat{y}_t=F\left(X_t,X_{t-1},\ldots,X_{t-12}\right).
+\end{equation}
+
+\subsection{基于 SHAP 的变量重要性解释}
+
+为避免机器学习模型成为黑箱，本文采用 SHAP 方法解释不同变量对模型输出的贡献。SHAP 值为正表示该变量在对应样本中推高预测浊度，SHAP 值为负表示该变量降低预测浊度。
+
+\subsection{模型性能与指定日期预测结果}
+
+\begin{table}[H]
+\centering
+\caption{不同模型对出厂水 NTU 的预测性能对比}
+\begin{tabular}{lccc}
+\toprule
+模型 & $RMSE$ & $MAE$ & $R^2$ \\
+\midrule
+多元线性回归 &  &  &  \\
+随机森林 &  &  &  \\
+XGBoost &  &  &  \\
+GRU &  &  &  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{2026 年 2 月指定日期出厂水 NTU 预测结果}
+\begin{tabular}{ccccc}
+\toprule
+日期 & 时间 & 预测值 & 真实值 & 绝对误差 \\
+\midrule
+2026-02-01 &  &  &  &  \\
+2026-02-10 &  &  &  &  \\
+2026-02-20 &  &  &  &  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{问题二：滤后水浊度的时滞动态模型}
+
+\subsection{滤后水浊度影响机制分析}
+
+滤后水浊度 $FILT.NTU$ 是衡量混凝、沉淀和过滤效果的重要指标。原水浊度反映进入处理系统的颗粒负荷，原水 pH 会影响混凝剂效果，矾投加量是调控混凝反应的关键变量，原水流量则影响反应时间和过滤负荷。上述变量对滤后水浊度的影响并非即时发生，而是存在不同程度的时间滞后。
+
+\subsection{动态时滞模型建立}
+
+设 $z_t$ 表示 $t$ 时刻滤后水浊度，$x_{i,t-\tau_i}$ 表示第 $i$ 个输入变量在滞后 $\tau_i$ 后对滤后水浊度产生影响，则动态模型可表示为
+\begin{equation}
+  z_t=f\left(x_{1,t-\tau_1},x_{2,t-\tau_2},\ldots,x_{m,t-\tau_m}\right)+\varepsilon_t .
+\end{equation}
+
+其中，$\tau_i\in\{0,1,\ldots,12\}$，对应 0--24 小时滞后。
+
+\subsection{最优时滞参数识别}
+
+本文结合滞后相关性、网格搜索和模型特征重要性确定各变量的最优时滞。对于每个变量，在候选滞后阶数集合中选择使模型预测误差最小或特征贡献最大的滞后阶数。
+
+\begin{table}[H]
+\centering
+\caption{主要输入变量的最优时滞参数}
+\begin{tabular}{lccc}
+\toprule
+输入变量 & 最优滞后阶数 & 滞后时间/h & 作用方向 \\
+\midrule
+$R/W\ NTU$ &  &  &  \\
+$R/W\ PH$ &  &  &  \\
+$ALUM$ &  &  &  \\
+$F/RIDE$ &  &  &  \\
+$R/W\ FLOW$ &  &  &  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{模型验证}
+
+\begin{table}[H]
+\centering
+\caption{$FILT.NTU$ 动态模型预测性能}
+\begin{tabular}{lccc}
+\toprule
+模型 & $RMSE$ & $MAE$ & $R^2$ \\
+\midrule
+ARX 基准模型 &  &  &  \\
+滞后随机森林模型 &  &  &  \\
+Lag-XGBoost 模型 &  &  &  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{问题三：基于水力停留时间与 GRU 的出厂水浊度多步预测模型}
+
+\subsection{水力停留时间特征构造}
+
+清水池具有调蓄和混合作用，当前出厂水浊度通常受到过去一段时间滤后水和清水池状态的共同影响。若用 $L_t$ 表示清水池水位，用 $Q_t$ 表示出厂水流量，则近似水力停留时间特征定义为
+\begin{equation}
+  HRT_t=\frac{L_t}{Q_t+\epsilon},
+\end{equation}
+其中 $\epsilon$ 为防止分母为零的极小常数。
+
+\subsection{多步预测问题定义}
+
+由于采样间隔为 2 小时，未来 1--12 小时预测可转化为未来 1--6 步预测。设 $h=1,2,\ldots,6$，则多步预测目标为
+\begin{equation}
+  \hat{y}_{t+h}=g\left(y_{t-k:t},z_{t-k:t},X_{t-k:t},HRT_{t-k:t}\right),
+\end{equation}
+其中 $k$ 表示历史窗口长度。
+
+\subsection{GRU 模型结构}
+
+GRU 通过更新门和重置门刻画历史序列信息，其基本结构为
+\begin{align}
+  r_t &= \sigma(W_r x_t+U_r h_{t-1}+b_r),\\
+  u_t &= \sigma(W_u x_t+U_u h_{t-1}+b_u),\\
+  \tilde{h}_t &= \tanh(W_h x_t+U_h(r_t\odot h_{t-1})+b_h),\\
+  h_t &= (1-u_t)\odot h_{t-1}+u_t\odot \tilde{h}_t .
+\end{align}
+
+\subsection{多步预测性能评价}
+
+\begin{table}[H]
+\centering
+\caption{不同预测步长下模型预测性能}
+\begin{tabular}{ccccc}
+\toprule
+预测步长 & 对应时间 & $RMSE$ & $MAE$ & $R^2$ \\
+\midrule
+1 step & 2 h &  &  &  \\
+2 steps & 4 h &  &  &  \\
+3 steps & 6 h &  &  &  \\
+4 steps & 8 h &  &  &  \\
+5 steps & 10 h &  &  &  \\
+6 steps & 12 h &  &  &  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{指定日期 7:00 至 19:00 预测结果}
+
+\begin{table}[H]
+\centering
+\caption{2026 年 2 月指定日期 7:00 至 19:00 出厂水 NTU 预测结果}
+\begin{tabular}{cccccc}
+\toprule
+日期 & 时间 & 2h预测 & 4h预测 & 6h预测 & 12h预测 \\
+\midrule
+2026-02-01 & 07:00 &  &  &  &  \\
+2026-02-01 & 09:00 &  &  &  &  \\
+2026-02-01 & 11:00 &  &  &  &  \\
+2026-02-01 & 13:00 &  &  &  &  \\
+2026-02-01 & 15:00 &  &  &  &  \\
+2026-02-01 & 17:00 &  &  &  &  \\
+2026-02-01 & 19:00 &  &  &  &  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{输入变量敏感性分析}
+
+为分析原水水质突变和矾投加调整对未来出厂水浊度预测结果的影响，本文设计情景扰动实验。设原始输入为 $X_t$，扰动后输入为 $X'_t$，则相对敏感度定义为
+\begin{equation}
+  S_i=\frac{\Delta \hat{y}/\hat{y}}{\Delta x_i/x_i} .
+\end{equation}
+
+\section{问题四：水质风险评价模型}
+
+\subsection{风险评价指标构建}
+
+以出厂水浊度 $y_t$ 为核心指标，根据生活饮用水浊度限值 $NTU\leq 1$ 定义超标幅度
+\begin{equation}
+  E_t=\max(0,y_t-1).
+\end{equation}
+
+同时定义浊度波动指标
+\begin{equation}
+  V_t=|y_t-y_{t-1}|.
+\end{equation}
+
+设 $D_t$ 表示连续异常持续时间，则综合风险指数为
+\begin{equation}
+  R_t=\alpha E_t+\beta D_t+\gamma V_t,
+\end{equation}
+其中 $\alpha,\beta,\gamma$ 为权重，满足 $\alpha+\beta+\gamma=1$。
+
+\subsection{风险等级划分}
+
+\begin{table}[H]
+\centering
+\caption{水质风险等级划分标准}
+\begin{tabular}{lll}
+\toprule
+风险等级 & 判定依据 & 含义 \\
+\midrule
+安全 & 未超标且波动较小 & 水质稳定达标 \\
+低风险 & 接近阈值或短时轻微波动 & 需要关注 \\
+中风险 & 短时超标或波动明显 & 需要采取调控措施 \\
+高风险 & 持续超标或严重异常 & 需要立即干预 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{2026 年近三个月风险评价结果}
+
+\begin{table}[H]
+\centering
+\caption{2026 年 1--3 月各风险等级天数占比}
+\begin{tabular}{lcc}
+\toprule
+风险等级 & 天数 & 占比 \\
+\midrule
+安全 &  &  \\
+低风险 &  &  \\
+中风险 &  &  \\
+高风险 &  &  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{2026 年 3 月每日风险分类结果}
+\begin{tabular}{ccccc}
+\toprule
+日期 & 日均 NTU & 日最大 NTU & 连续超标时长/h & 风险等级 \\
+\midrule
+2026-03-01 &  &  &  &  \\
+2026-03-02 &  &  &  &  \\
+\multicolumn{5}{c}{\textit{此处补充 3 月完整日期结果}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{模型评价与敏感性分析}
+
+本节从预测精度、解释性、稳定性和实际应用价值四个方面评价模型。预测精度采用 $RMSE$、$MAE$ 和 $R^2$ 衡量；解释性通过 SHAP 重要性、时滞参数和风险指标构成体现；稳定性通过不同月份、不同预测步长和输入扰动情景下的模型表现进行检验。
+
+\section{模型优缺点}
+
+\subsection{模型优点}
+\begin{enumerate}[label=（\arabic*）]
+  \item 充分考虑水处理过程的时间滞后特征，避免静态建模的局限；
+  \item 将 XGBoost、SHAP 与 GRU 结合，兼顾预测精度和可解释性；
+  \item 引入近似水力停留时间特征，使模型具有一定机理解释；
+  \item 风险评价同时考虑超标幅度、持续时间和波动程度，较单一阈值判断更合理。
+\end{enumerate}
+
+\subsection{模型不足}
+\begin{enumerate}[label=（\arabic*）]
+  \item 清水池水力停留时间只能由水位和流量近似表征，可能与真实停留时间存在偏差；
+  \item 部分变量缺失率较高，可能影响完整变量模型的稳定性；
+  \item 对极端异常工况的预测能力依赖历史样本覆盖情况。
+\end{enumerate}
+
+\section{结论}
+
+本文围绕自来水厂水浊度预测与风险评估问题，构建了从数据预处理、影响因素筛选、时滞动态建模、多步预测到风险分级的完整建模框架。后续将在完成数据清洗和模型训练后，补充各问题的具体数值结果、预测表格和图形分析。
+
+\newpage
+\begin{thebibliography}{99}
+\bibitem{ref1} 作者，书名，出版地：出版社，出版年。
+\bibitem{ref2} 作者，论文名，期刊名，卷号(期号)：起止页码，出版年。
+\bibitem{ref3} 作者，资源标题，网址，访问时间。
+\end{thebibliography}
+
+\newpage
+\appendix
+\section{附录：程序代码与补充结果}
+
+\subsection{数据预处理代码}
+\begin{lstlisting}[language=Python]
+# 此处放置数据清洗、时间重构、缺失值处理和特征工程代码
+\end{lstlisting}
+
+\subsection{完整预测结果表}
+此处放置问题一、问题三和问题四中篇幅较长的完整预测结果表。
+
+\end{document}
