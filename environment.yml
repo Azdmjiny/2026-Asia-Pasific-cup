@@ -6,3 +6,10 @@ dependencies:
   - pandas=3.0.2
   - openpyxl=3.1.5
   - xlrd=2.0.2
+  - scikit-learn
+  - xgboost
+  - shap
+  - matplotlib
+  - seaborn
+  - jupyter
+  - ipykernel
