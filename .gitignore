@@ -1,1 +1,106 @@
+# =========================
+# Python cache
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+
+# =========================
+# Virtual environments
+# =========================
+venv/
+.env/
+.venv/
+env/
+ENV/
+conda_env/
+
+# =========================
+# System files
+# =========================
 .DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================
+# IDE / editor files
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+
+# =========================
+# LaTeX temporary files
+# =========================
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+*.xdv
+
+# =========================
+# Word temporary files
+# =========================
+~$*.docx
+~$*.xlsx
+*.tmp
+
+# =========================
+# Python model outputs
+# =========================
+models/
+checkpoints/
+*.pkl
+*.joblib
+*.pt
+*.pth
+*.h5
+*.keras
+
+# =========================
+# Large generated outputs
+# =========================
+outputs/
+results/
+figures/generated/
+predictions/
+cleaned_data/
+
+# =========================
+# Raw competition data
+# 建议不要上传原始附件数据，避免泄露或仓库过大
+# =========================
+data/raw/
+*.xls
+*.xlsx
+
+# =========================
+# But allow table templates if needed
+# =========================
+!templates/*.xlsx
+!paper_tables/*.xlsx
+
+# =========================
+# Final submission files
+# 可以选择忽略，避免误传最终PDF
+# =========================
+final_submit/
+*.zip
+*.rar
