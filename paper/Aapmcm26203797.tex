@@ -92,7 +92,7 @@
 
 自来水厂出厂水水质直接关系到供水安全，其变化过程受到原水指标、操作变量等多种因素的共同影响。针对题目给出的多源时序监测数据，本文围绕影响因素识别、水质动态预测以及运行策略优化等问题展开研究，构建兼具解释性与预测能力的数学模型，为水厂精细化运行管理提供决策依据。
 
-针对问题一，首先通过
+针对问题一，首先通过数据集交叉验证和多方法综合评估筛选出影响出厂水浊度的关键因素。
 
 针对问题二，
 
@@ -147,7 +147,7 @@
   \item 清水池调蓄作用可由清水池水位和出厂水流量构造的近似水力停留时间特征表征。
   \item 短时传感器噪声不会改变水处理过程中的主要动态关系。
   \item 以生活饮用水浊度限值 $NTU\leq 1$ 作为判断出厂水是否超标的统一标准。
-  \item 
+  \item 假设在研究时间范围内，各影响因素与出厂水浊度之间存在稳定的时滞关系。
 \end{enumerate}
 
 \section{符号说明}
@@ -181,57 +181,124 @@ $R^2$ & 决定系数 \\
 \section{数据预处理与质量审计}
 
 \subsection{数据合并与时间重构}
-\subsubsection{数据合并}
-原始附件由多个按月份或按日期工作表记录的 Excel 文件构成，不同文件在日期格式、字段完整性和缺失情况上存在差异。为保证后续时间序列分析与预测建模的可靠性，本文首先对所有原始表格进行统一读取与整合，最终得到包含 5460 条两小时观测记录的统一数据集。数据时间范围覆盖 2025 年 1 月 1 日 07:00 至 2026 年 4 月 1 日 05:00，共包含题目涉及的 21 个字段，合并后时间戳重复数为 0。
-\subsubsection{时间重构}
-由于部分原始附件同时存在 Excel 日期格式与“日/月/年”文本格式混用的问题，且个别日期可能被软件错误识别为“月/日”格式，直接使用原始日期列作为时间索引存在风险。因此，本文依据文件所属月份、每日固定观测顺序以及监测时间信息重建标准时间轴。
 
-考虑到每日记录顺序为：
+原始附件由多个按月份或按日期工作表记录的 Excel 文件构成，为保证后续时间序列分析与预测建模的可靠性，本文首先对所有原始表格进行统一读取与整合，最终得到包含 5460 条两小时观测记录的统一数据集。数据时间范围覆盖 2025 年 1 月 1 日 07:00 至 2026 年 4 月 1 日 05:00，共包含题目涉及的 21 个字段，合并后时间戳重复数为 0。
 
-$$
-07:00,09:00,\cdots,23:00,01:00,03:00,05:00
-$$
+由于部分原始附件同时存在 Excel 日期格式与“日/月/年”文本格式混用的问题，本文依据文件所属月份、每日固定观测顺序以及监测时间信息重建标准时间轴。
 
-本文将 01:00、03:00 和 05:00 三个时点归入下一自然日，从而构建严格递增的统一时间序列。
+由于原始记录跨越自然日边界，本文将 01:00、03:00 和 05:00 观测归入下一自然日，从而构建严格递增的时间序列。
 
 \subsection{变量标准化}
-\subsubsection{字段统一}根据题目附录给出的变量定义，本文将不同来源文件中的表头统一映射为标准字段名称，包括原水流量、原水浊度、原水 pH、滤后水浊度、处理后水浊度、余氯、混凝剂投加量、出厂流量等变量。对于题目未明确给出物理单位的字段，本文不额外推断其量纲，仅保留原始数据形式。
-\subsubsection{送水泵运行转台转换}
+根据题目附录给出的变量定义，本文将不同来源文件中的表头统一映射为标准字段名称，包括原水流量、原水浊度、原水 pH、滤后水浊度、处理后水浊度、余氯、混凝剂投加量、出厂流量等变量。对于题目未明确给出物理单位的字段，本文不额外推断其量纲，仅保留原始数据形式。
+
 原始字段 T/W PUMP DUTY 使用泵组编号组合表示运行状态，例如“1\&3”、“2\&4”等。由于泵编号本身不具有数值大小意义，而运行泵数量能够更直接反映系统运行负荷，因此本文将该字段转换为运行泵数量特征。
 
-具体地，通过提取记录中的泵号数字并统计其个数获得运行泵数量。例如：
+\subsection{缺失值分析}
 
-\[1+2+5 \rightarrow 3\]
+原始数据中部分变量存在不同程度缺失，且缺失模式具有明显差异。统计结果表明，R/W FLOW、R/W NTU、FILT. NTU、C/W WELL LEVEL 和 T/W FLOW 等核心运行变量缺失率均低于 1\%，具有较好的连续性和完整性；而 ALUM、CL2、R/W PH 等工艺控制变量缺失率约为 30\%，F/RIDE 缺失率达到 75.68\%。18ML LEVEL 与 18ML FLOW 在整个观测期间均为空值，不具备分析价值，因此在后续建模中予以剔除。此外，2026 年 2 月 NTU 整月缺失，对应题目要求预测的目标数据，因此保留为空，不参与插补。
 
-\[1,4 \rightarrow 2\]
+进一步分析发现，部分变量的缺失并非随机漏测，而是来源于若干月份未进行记录。例如 ALUM、CL2、R/W PH 和 T/W PUMP DUTY 等变量均存在连续月份整体缺失的现象。因此，简单删除缺失样本将导致样本规模显著下降，而直接删除缺失变量又可能损失重要工艺信息。
 
-该转换保留了运行强度信息，同时提高了变量的可解释性与模型适用性。
+为评估不同缺失值处理策略对影响因素识别结果的影响，后续问题一分别构建“删除缺失特征”和“删除缺失样本”两种分析方案，并通过多种统计与机器学习方法进行交叉验证，以提高影响因素筛选结果的稳健性。
+
+
+\subsection{异常值检测}
+
+为评估数据质量并识别可能存在的异常观测，本文对连续数值变量进行异常值检测。考虑到水质监测数据具有明显的时间连续性和局部稳定性，采用基于中位数绝对偏差（Median Absolute Deviation, MAD）的 Hampel 方法进行局部离群点识别。
+
+对于时间序列 $x_t$，在以 $t$ 为中心的局部窗口内计算中位数 $m_t$ 与中位数绝对偏差 $MAD_t$。若满足
+
+\[
+|x_t-m_t|>5\times1.4826\times MAD_t,
+\]
+
+则将该观测标记为统计离群点。本文采用长度为 13 个观测点的中心窗口，对应约 24 小时的局部时间范围。
+
+检测结果表明，原水浊度、滤后水浊度、处理后水浊度以及流量等变量均存在一定数量的局部异常观测。这些异常点既可能来源于传感器噪声或记录误差，也可能反映真实的水质波动事件。考虑到题目后续需要分析水质风险及异常变化过程，本文仅对离群点进行标记而不删除原始观测值，以保留实际运行过程中的关键信息。
+
+
 %=========================================================
 \section{问题一：主要影响因素筛选与出厂水浊度预测模型}
 
 \subsection{候选影响因素选取}
+由于原始数据中部分变量存在不同程度缺失，直接采用单一数据处理策略可能导致变量重要性结果受到样本规模或特征完整性的影响。为提高结论的稳健性，本文分别构建两套分析数据集进行交叉验证。
 
-结合水处理工艺机理和数据字段，选取原水浊度、原水 pH、原水流量、滤后水浊度、矾投加量、清水池水位和出厂水流量等变量作为候选影响因素。
+方案A采用“删除缺失特征”的策略，即保留全部目标值有效样本，删除存在缺失记录的输入变量；方案B采用“删除缺失样本”的策略，即保留全部非空输入变量，但删除任一输入特征存在缺失的观测记录。两种方案分别代表“保留样本规模优先”和“保留变量信息优先”的两种建模思路。
+
+在两套数据集上，分别采用 Pearson 相关系数、Spearman 相关系数、Random Forest 特征重要性、XGBoost 特征重要性以及 SHAP 解释分析对变量影响程度进行评估，各方法得到的重要变量排序结果见附录A。为降低单一分析方法带来的偏差，本文统计各变量在两种缺失值处理方案下、六类分析方法前三重要变量中的出现频次，并以此衡量变量重要性的稳定性。出现频次越高，说明该变量在不同数据处理策略和分析框架下均表现出较强影响力。统计结果如\ref{tab:vote}所示。
 
 \begin{table}[H]
 \centering
-\caption{候选变量及物理含义}
-\begin{tabularx}{0.95\textwidth}{l l L}
+\caption{主要影响因素综合筛选结果}
+\label{tab:vote}
+\begin{tabular}{lc}
 \toprule
-变量 & 中文含义 & 建模作用 \\
+变量 & 出现次数 \\
 \midrule
-$R/W\ NTU$ & 原水浊度 & 主要输入变量，反映进入处理系统的颗粒污染负荷 \\
-$R/W\ PH$ & 原水 pH & 影响混凝剂作用效果，可能具有非线性影响 \\
-$R/W\ FLOW$ & 原水流量 & 影响处理负荷和水力停留状态 \\
-$FILT.NTU$ & 滤后水浊度 & 反映过滤前后处理效果，是出厂水浊度的重要中间变量 \\
-$ALUM$ & 矾投加量 & 工艺控制变量，对浊度变化具有滞后调节作用 \\
-$C/W\ WELL\ LEVEL$ & 清水池水位 & 与清水池调蓄和水力停留过程相关 \\
-$T/W\ FLOW$ & 出厂水流量 & 与出厂输送负荷和停留时间相关 \\
+FILT.NTU & 8 \\
+RIVER LEVEL & 6 \\
+R/W FLOW & 4 \\
+T/W FLOW & 4 \\
+CLR & 3 \\
+ALUM & 2 \\
+R/W NTU & 2 \\
+T/W PUMP DUTY & 1 \\
 \bottomrule
-\end{tabularx}
+\end{tabular}
 \end{table}
 
-\subsection{相关性分析与滞后相关性分析}
+除统计分析结果外，本文结合供水工艺机理对变量进行补充筛选。考虑到CL2 和 F/RIDE 分别反映水力停留状态、消毒工艺状态及水质监测指标，故将其纳入最终影响因素集合。
+最终确定的问题一关键影响因素集合为：
+最终确定的关键影响因素包括：
+$FILT.NTU,\ CLR,\ R/W\ FLOW,\ T/W\ FLOW,\ RIVER\ LEVEL,\ R/W\ NTU,\ ALUM,\ CL2,\ T/W\ PUMP\ DUTY,\ F/RIDE.$
+
+后续影响程度分析、作用方向分析以及预测模型构建均基于上述变量集合展开。
+
+\subsection{影响程度与作用方向分析}
+
+为进一步解释各影响因素对出厂水浊度（NTU）的作用机制，本文结合相关性分析与SHAP解释模型，对关键变量的影响程度及作用方向进行研究。
+
+图~\ref{fig:corr}给出了方案B下Pearson相关系数与Spearman相关系数热力图。Pearson相关系数主要反映变量间的线性关系，而Spearman相关系数能够反映变量间的单调关系。由图可见，FILT.NTU、RIVER LEVEL、R/W NTU等变量与出厂水浊度均表现出较明显的正相关关系，其中FILT.NTU与NTU的相关性最为显著，表明滤后水浊度是影响最终出厂水质的重要前置指标。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{images/Pearson_B.png}
+\caption{方案B下Pearson与Spearman相关系数热力图}
+\label{fig:corr}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+
+\begin{subfigure}[b]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{images/SHAP_B_Ran.png}
+    \caption{Random Forest}
+    \label{fig:shap_rf}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{images/SHAP_B_XG.png}
+    \caption{XGBoost}
+    \label{fig:shap_xgb}
+\end{subfigure}
+
+\caption{方案B下两种模型的SHAP解释结果}
+\label{fig:shap_compare}
+
+\end{figure}
+
+
+同时本文采用SHAP方法对随机森林模型进行解释，结果如图~\ref{fig:shap}所示。SHAP结果表明，FILT.NTU和RIVER LEVEL具有最大的平均贡献度，是影响出厂水浊度的核心因素。其中，当FILT.NTU取值较高时，其对应SHAP值主要分布于正区间，说明滤后水浊度升高将显著提高出厂水浊度预测值；同样，较高的RIVER LEVEL也倾向于产生正向贡献，表明较高水位状态下系统更容易出现浊度升高现象。
+
+T/W FLOW和R/W FLOW的重要性排名同样较高，说明进出厂流量变化会通过改变系统运行负荷和水力停留条件影响最终水质。对于ALUM变量，高取值样本对应的SHAP值多数位于负区间，表明适当增加混凝剂投加量有助于降低出厂水浊度，这与实际水处理工艺机理一致。
+
+综合相关性分析、特征重要性分析及SHAP解释结果，FILT.NTU、RIVER LEVEL、R/W FLOW和T/W FLOW在多种评价方法下均保持较高的重要性，是影响出厂水浊度变化的核心因素。SHAP分析进一步表明，FILT.NTU、RIVER LEVEL以及进出厂流量总体与NTU呈正向关系，而ALUM表现出负向调节作用，说明增加混凝剂投加量有助于降低出厂水浊度。上述结论与实际水处理工艺机理相符，为后续建立预测模型提供了依据。
+
+
+
+\subsection{出厂水浊度预测模型}
 
 首先采用 Pearson 相关系数和 Spearman 相关系数分析各变量与出厂水浊度之间的线性和单调关系。对于变量 $x_i$ 与目标变量 $y$，Pearson 相关系数为
 \begin{equation}
@@ -241,18 +308,12 @@ $T/W\ FLOW$ & 出厂水流量 & 与出厂输送负荷和停留时间相关 \\
 
 进一步地，对不同滞后阶数下的变量与目标变量计算相关性，以识别潜在时滞影响。
 
-\subsection{基于 XGBoost 的出厂水浊度预测模型}
+\subsection{模型性能评价与预测结果}
 
 为刻画输入变量与出厂水浊度之间的非线性关系，本文建立 XGBoost 回归模型。模型输入为当前变量及其滞后特征，输出为出厂水浊度 $y_t$。模型预测形式为
 \begin{equation}
   \hat{y}_t=F\left(X_t,X_{t-1},\ldots,X_{t-12}\right).
 \end{equation}
-
-\subsection{基于 SHAP 的变量重要性解释}
-
-为避免机器学习模型成为黑箱，本文采用 SHAP 方法解释不同变量对模型输出的贡献。SHAP 值为正表示该变量在对应样本中推高预测浊度，SHAP 值为负表示该变量降低预测浊度。
-
-\subsection{模型性能与指定日期预测结果}
 
 \begin{table}[H]
 \centering
@@ -546,5 +607,47 @@ Goodfellow I, Bengio Y, Courville A. Deep Learning[M]. Cambridge: MIT Press, 201
 \end{thebibliography}
 
 \newpage
+\section{附录}
+\begin{table}[H]
+\centering
+\caption{不同缺失值处理方案下各方法的重要变量排序结果}
+\label{tab:importance_appendix}
+\small
+\begin{tabularx}{\textwidth}{c c c X X X X X X}
+\toprule
+方案 & 最佳模型 & 最佳RMSE &
+RF重要性前三 &
+XGB重要性前三 &
+RF SHAP前三 &
+XGB SHAP前三 &
+Pearson前三 &
+Spearman前三 \\
+\midrule
+
+A &
+XGBoost &
+0.3864 &
+FILT. NTU, CLR, RIVER LEVEL &
+CLR, FILT. NTU, R/W FLOW &
+FILT. NTU, T/W FLOW, RIVER LEVEL &
+FILT. NTU, T/W FLOW, RIVER LEVEL &
+FILT. NTU, CLR, R/W FLOW &
+R/W FLOW, T/W FLOW, FILT. NTU \\
+
+\midrule
+
+B &
+Random Forest &
+0.0921 &
+FILT. NTU, RIVER LEVEL, R/W NTU &
+FILT. NTU, T/W PUMP DUTY, ALUM &
+RIVER LEVEL, FILT. NTU, T/W FLOW &
+FILT. NTU, RIVER LEVEL, ALUM &
+FILT. NTU, RIVER LEVEL, R/W NTU &
+RIVER LEVEL, ALUM, R/W CLR \\
+
+\bottomrule
+\end{tabularx}
+\end{table}
 
 \end{document}
