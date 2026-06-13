@@ -20,7 +20,7 @@ from openpyxl.utils import get_column_letter
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
 OUTPUT_PATH = DATA_DIR / "merged.xlsx"
-README_PATH = ROOT / "README.md"
+README_PATH = ROOT / "report" / "preprocess.md"
 
 STANDARD_COLUMNS = [
     "DATE",
@@ -149,7 +149,7 @@ DATA_DICTIONARY = [
     ("DATE", "自然日期", "由来源运营日和时点重建"),
     ("TIME", "监测时间", "每天 12 次，每 2 小时一次"),
     ("RIVER LEVEL", "河水水位", "题目未注明单位"),
-    ("R/W PUMP DUTY", "原水泵运行状态/工作频率", "控制变量，部分记录为泵组编号"),
+    ("R/W PUMP DUTY", "原水泵运行数量", "由原泵组编号中的数字数量转换"),
     ("R/W FLOW", "原水流量", "题目未注明单位"),
     ("R/W NTU", "原水浊度", "NTU"),
     ("R/W CLR", "原水色度", "题目未注明单位"),
@@ -195,51 +195,54 @@ def clean_value(value: Any) -> Any:
     return value
 
 
-def convert_treated_water_pump_duty(
+def convert_pump_duties(
     audit: pd.DataFrame,
-) -> tuple[pd.DataFrame, list[str], Counter]:
-    """Convert treated-water pump identifiers to the number of running pumps."""
-    converted: list[int | None] = []
-    value_counts: Counter = Counter()
+) -> tuple[pd.DataFrame, list[str], dict[str, Counter]]:
+    """Convert raw/treated-water pump identifiers to running-pump counts."""
+    source_counts: dict[str, Counter] = {}
     corrections: list[str] = []
 
-    for index, value in audit["T/W PUMP DUTY"].items():
-        if is_missing(value):
-            converted.append(None)
-            continue
+    for column in PUMP_COLUMNS:
+        converted: list[int | None] = []
+        value_counts: Counter = Counter()
+        for index, value in audit[column].items():
+            if is_missing(value):
+                converted.append(None)
+                continue
 
-        text = str(value).strip()
-        if text.endswith(".0") and text[:-2].isdigit():
-            text = text[:-2]
-        value_counts[text] += 1
+            text = str(value).strip()
+            if text.endswith(".0") and text[:-2].isdigit():
+                text = text[:-2]
+            value_counts[text] += 1
 
-        if text == "244":
-            converted.append(2)
-            corrections.append(
-                "2025-09-18 11:00 的 `T/W PUMP DUTY=244`，上下相邻记录均为 "
-                "`2+4` 或 `2&4`，判定为泵号 2、4 的分隔符误录，转换为运行泵数量 2。"
-            )
-            continue
-        if text == "2,2":
-            converted.append(2)
-            corrections.append(
-                "2025-04-08 05:00 的 `T/W PUMP DUTY=2,2`，前后相邻记录均为 "
-                "`2,3`，判定为泵号 2、3 的误录，转换为运行泵数量 2。"
-            )
-            continue
+            if column == "T/W PUMP DUTY" and text == "244":
+                converted.append(2)
+                corrections.append(
+                    "2025-09-18 11:00 的 `T/W PUMP DUTY=244`，上下相邻记录均为 "
+                    "`2+4` 或 `2&4`，判定为泵号 2、4 的分隔符误录，转换为运行泵数量 2。"
+                )
+                continue
+            if column == "T/W PUMP DUTY" and text == "2,2":
+                converted.append(2)
+                corrections.append(
+                    "2025-04-08 05:00 的 `T/W PUMP DUTY=2,2`，前后相邻记录均为 "
+                    "`2,3`，判定为泵号 2、3 的误录，转换为运行泵数量 2。"
+                )
+                continue
 
-        pump_ids = re.findall(r"\d+", text)
-        if not pump_ids:
-            converted.append(None)
-            corrections.append(
-                f"{audit.at[index, '_TIMESTAMP']:%Y-%m-%d %H:%M} 的 "
-                f"`T/W PUMP DUTY={text}` 无法识别，转换为空值。"
-            )
-            continue
-        converted.append(len(pump_ids))
+            pump_ids = re.findall(r"\d+", text)
+            if not pump_ids:
+                converted.append(None)
+                corrections.append(
+                    f"{audit.at[index, '_TIMESTAMP']:%Y-%m-%d %H:%M} 的 "
+                    f"`{column}={text}` 无法识别，转换为空值。"
+                )
+                continue
+            converted.append(len(pump_ids))
 
-    audit["T/W PUMP DUTY"] = pd.array(converted, dtype="Int64")
-    return audit, corrections, value_counts
+        audit[column] = pd.array(converted, dtype="Int64")
+        source_counts[column] = value_counts
+    return audit, corrections, source_counts
 
 
 def normalize_time(value: Any, expected: str) -> tuple[str, str | None]:
@@ -396,6 +399,22 @@ def impute_short_gaps(
 
     for column in NUMERIC_COLUMNS:
         filled = 0
+        if column == "RIVER LEVEL":
+            missing_before = int(audit[column].isna().sum())
+            audit[column] = audit[column].interpolate(
+                method="linear", limit_direction="both"
+            ).round(2)
+            filled = missing_before - int(audit[column].isna().sum())
+            summary.append(
+                [
+                    column,
+                    int(original_missing[column]),
+                    filled,
+                    int(audit[column].isna().sum()),
+                    "全列线性插值（边界用最近有效值）",
+                ]
+            )
+            continue
         protected = target_mask if column == "NTU" else pd.Series(
             False, index=audit.index
         )
@@ -578,7 +597,7 @@ def build_report(
     audit: pd.DataFrame,
     repairs: list[str],
     pump_corrections: list[str],
-    pump_source_counts: Counter,
+    pump_source_counts: dict[str, Counter],
     imputation_summary: list[list[Any]],
     original_missing: pd.Series,
     invalid_numeric: list[dict[str, Any]],
@@ -683,14 +702,18 @@ def build_report(
         "\n".join(f"- {item}" for item in pump_corrections) or "- 无特殊纠错。"
     )
     pump_mapping_rows = []
-    for source_value, count in sorted(
-        pump_source_counts.items(), key=lambda item: (-item[1], item[0])
-    ):
-        if source_value in {"244", "2,2"}:
-            converted_count = 2
-        else:
-            converted_count = len(re.findall(r"\d+", source_value))
-        pump_mapping_rows.append([source_value, converted_count, count])
+    for column in PUMP_COLUMNS:
+        for source_value, count in sorted(
+            pump_source_counts[column].items(),
+            key=lambda item: (-item[1], item[0]),
+        ):
+            if column == "T/W PUMP DUTY" and source_value in {"244", "2,2"}:
+                converted_count = 2
+            else:
+                converted_count = len(re.findall(r"\d+", source_value))
+            pump_mapping_rows.append(
+                [column, source_value, converted_count, count]
+            )
     date_note = (
         "2025 年月度附件中的日期混用 Excel 日期和 `日/月/年` 文本，"
         "且部分日期被软件按 `月/日` 显示。脚本依据文件月份、每日固定 12 行顺序"
@@ -714,6 +737,7 @@ def build_report(
 
 ### 缺失值处理
 
+- `RIVER LEVEL` 全部补齐：内部缺口采用线性插值，若缺失位于数据边界则使用最近有效值，结果保留两位小数。
 - 连续缺失不超过 {MAX_IMPUTE_GAP} 个时点（12 小时）、且缺口两端都有有效值时，连续变量采用线性插值。
 - 两个泵状态字段采用上下文众数，避免产生小数泵数量。
 - 超过 12 小时的连续缺失保持不变。
@@ -751,10 +775,11 @@ def build_report(
 
 {repair_lines}
 
-### 送水泵运行数量转换
+### 水泵运行数量转换
 
-原始 `T/W PUMP DUTY` 使用泵号组合表示运行状态，分隔符包括 `+`、`,`、`&` 和 `/`。
-合并文件将该字段统一改为**运行泵数量**：提取单元格中的泵号数字，并按数字个数计数。
+原始 `R/W PUMP DUTY` 和 `T/W PUMP DUTY` 使用泵号组合表示运行状态，
+分隔符包括 `+`、`,`、`&` 和 `/`。合并文件将两个字段统一改为**运行泵数量**：
+提取单元格中的泵号数字，并按数字个数计数。
 例如 `1+2+5` 转换为 3，`1,4` 转换为 2，裸值 `2` 转换为 1。
 
 特殊纠错：
@@ -763,7 +788,7 @@ def build_report(
 
 全部原始写法及转换结果：
 
-{markdown_table(["原始写法", "运行泵数量", "出现次数"], pump_mapping_rows)}
+{markdown_table(["字段", "原始写法", "运行泵数量", "出现次数"], pump_mapping_rows)}
 
 ### 硬异常与非数字值
 
@@ -836,6 +861,9 @@ def write_workbook(output: pd.DataFrame) -> None:
         if isinstance(cell.value, str):
             cell.value = datetime.strptime(cell.value, "%H:%M:%S").time()
         cell.number_format = "hh:mm"
+    river_level_column = OUTPUT_COLUMNS.index("RIVER LEVEL") + 1
+    for row in range(2, sheet.max_row + 1):
+        sheet.cell(row, river_level_column).number_format = "0.00"
     workbook.save(OUTPUT_PATH)
 
 
@@ -866,15 +894,17 @@ def verify_output(expected_rows: int) -> None:
         raise AssertionError(
             f"TIME cells are not native Excel times: {type(sheet['B2'].value)}"
         )
-    pump_values = {
-        cell.value
-        for cell in sheet["Q"][1:]
-        if cell.value is not None
-    }
-    if not pump_values.issubset({1, 2, 3}):
-        raise AssertionError(
-            f"Unexpected T/W PUMP DUTY values after conversion: {pump_values}"
-        )
+    for column in PUMP_COLUMNS:
+        column_index = OUTPUT_COLUMNS.index(column) + 1
+        pump_values = {
+            sheet.cell(row, column_index).value
+            for row in range(2, sheet.max_row + 1)
+            if sheet.cell(row, column_index).value is not None
+        }
+        if not pump_values.issubset({1, 2, 3}):
+            raise AssertionError(
+                f"Unexpected {column} values after conversion: {pump_values}"
+            )
 
 
 def main() -> None:
@@ -898,7 +928,7 @@ def main() -> None:
         raise AssertionError(f"Expected 5460 records, found {len(audit)}")
     duplicate_count = int(audit["_TIMESTAMP"].duplicated(keep=False).sum())
 
-    audit, pump_corrections, pump_source_counts = convert_treated_water_pump_duty(
+    audit, pump_corrections, pump_source_counts = convert_pump_duties(
         audit
     )
     audit, invalid_numeric = coerce_numeric_columns(audit)
