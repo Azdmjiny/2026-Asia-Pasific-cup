@@ -47,7 +47,7 @@ CANDIDATE_LAG_FEATURES = {
     "CLR": [0],
     "R/W FLOW": [0, 1],
     "T/W FLOW": [0, 1, 3],
-    "C/W WELL LEVEL": [0, 1],
+    "RIVER LEVEL": [0, 1],
     "R/W NTU": [0, 1],
     "CL2": [0],
     "ALUM": [1, 2],
