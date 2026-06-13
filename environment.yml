@@ -10,6 +10,7 @@ dependencies:
   - seaborn
   - scikit-learn
   - xgboost
+  - lightgbm
   - shap
   - jupyter
   - ipykernel
