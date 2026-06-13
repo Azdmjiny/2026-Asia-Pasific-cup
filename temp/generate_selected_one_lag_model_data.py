@@ -127,6 +127,21 @@ print("\nOriginal data shape:", df.shape)
 print("Columns:")
 print(df.columns.tolist())
 
+# =========================
+# Fill missing F/RIDE with 0
+# =========================
+
+if "F/RIDE" in df.columns:
+    df["F/RIDE"] = pd.to_numeric(df["F/RIDE"], errors="coerce")
+    missing_before = df["F/RIDE"].isna().sum()
+    df["F/RIDE"] = df["F/RIDE"].fillna(0)
+    missing_after = df["F/RIDE"].isna().sum()
+
+    print("F/RIDE missing before filling:", missing_before)
+    print("F/RIDE missing after filling:", missing_after)
+else:
+    print("F/RIDE column not found.")
+
 if TARGET_COL not in df.columns:
     raise ValueError(f"Target column '{TARGET_COL}' not found.")
 
