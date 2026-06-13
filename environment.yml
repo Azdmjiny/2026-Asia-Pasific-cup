@@ -1,15 +1,21 @@
-name: mcm
+name: apmcm
 channels:
+  - conda-forge
   - defaults
 dependencies:
-  - python=3.12
-  - pandas=3.0.2
-  - openpyxl=3.1.5
-  - xlrd=2.0.2
+  - python=3.10
+  - pandas
+  - numpy
   - scikit-learn
-  - xgboost
-  - shap
   - matplotlib
   - seaborn
+  - openpyxl
+  - xlrd
+  - xgboost
+  - shap
+  - joblib
+  - jinja2
+  - notebook
   - jupyter
   - ipykernel
+  - pip
