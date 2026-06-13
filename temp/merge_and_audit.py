@@ -46,6 +46,11 @@ STANDARD_COLUMNS = [
     "REMARKS",
 ]
 
+DROP_COLUMNS = ["18ML LEVEL", "18ML FLOW", "REMARKS"]
+OUTPUT_COLUMNS = [
+    column for column in STANDARD_COLUMNS if column not in DROP_COLUMNS
+]
+
 NUMERIC_COLUMNS = [
     "RIVER LEVEL",
     "R/W FLOW",
@@ -61,9 +66,10 @@ NUMERIC_COLUMNS = [
     "F/RIDE",
     "ALUM",
     "T/W FLOW",
-    "18ML LEVEL",
-    "18ML FLOW",
 ]
+
+PUMP_COLUMNS = ["R/W PUMP DUTY", "T/W PUMP DUTY"]
+MAX_IMPUTE_GAP = 6
 
 HARD_RANGES = {
     "RIVER LEVEL": (0, 30),
@@ -363,6 +369,99 @@ def coerce_numeric_columns(
     return audit, invalid
 
 
+def missing_runs(mask: pd.Series) -> list[tuple[int, int]]:
+    runs: list[tuple[int, int]] = []
+    start: int | None = None
+    for index, missing in enumerate(mask.tolist()):
+        if missing and start is None:
+            start = index
+        elif not missing and start is not None:
+            runs.append((start, index - 1))
+            start = None
+    if start is not None:
+        runs.append((start, len(mask) - 1))
+    return runs
+
+
+def impute_short_gaps(
+    audit: pd.DataFrame,
+) -> tuple[pd.DataFrame, list[list[Any]], pd.Series]:
+    """Fill bounded gaps up to 12 hours while preserving structural gaps."""
+    original_missing = audit[OUTPUT_COLUMNS[2:]].isna().sum()
+    target_mask = (
+        audit["_SOURCE_FILE"].eq("202602.xls")
+        & audit["NTU"].isna()
+    )
+    summary: list[list[Any]] = []
+
+    for column in NUMERIC_COLUMNS:
+        filled = 0
+        protected = target_mask if column == "NTU" else pd.Series(
+            False, index=audit.index
+        )
+        for start, end in missing_runs(audit[column].isna()):
+            length = end - start + 1
+            if (
+                length > MAX_IMPUTE_GAP
+                or protected.iloc[start : end + 1].any()
+                or start == 0
+                or end == len(audit) - 1
+            ):
+                continue
+            before = audit.at[start - 1, column]
+            after = audit.at[end + 1, column]
+            if pd.isna(before) or pd.isna(after):
+                continue
+            values = np.linspace(float(before), float(after), length + 2)[1:-1]
+            audit.loc[start:end, column] = values
+            filled += length
+        summary.append(
+            [
+                column,
+                int(original_missing[column]),
+                filled,
+                int(audit[column].isna().sum()),
+                "线性插值",
+            ]
+        )
+
+    for column in PUMP_COLUMNS:
+        filled = 0
+        for start, end in missing_runs(audit[column].isna()):
+            length = end - start + 1
+            if length > MAX_IMPUTE_GAP or start == 0 or end == len(audit) - 1:
+                continue
+            before = audit.at[start - 1, column]
+            after = audit.at[end + 1, column]
+            if pd.isna(before) or pd.isna(after):
+                continue
+            context = pd.concat(
+                [
+                    audit.loc[max(0, start - 6) : start - 1, column],
+                    audit.loc[end + 1 : min(len(audit) - 1, end + 6), column],
+                ]
+            ).dropna()
+            modes = context.mode()
+            if modes.empty:
+                continue
+            if len(modes) > 1 and before != after:
+                continue
+            value = before if before == after else modes.iloc[0]
+            audit.loc[start:end, column] = value
+            filled += length
+        summary.append(
+            [
+                column,
+                int(original_missing[column]),
+                filled,
+                int(audit[column].isna().sum()),
+                "上下文众数",
+            ]
+        )
+
+    return audit, summary, original_missing
+
+
 def anomaly_record(
     frame: pd.DataFrame, index: int, field: str, value: Any
 ) -> dict[str, Any]:
@@ -480,6 +579,8 @@ def build_report(
     repairs: list[str],
     pump_corrections: list[str],
     pump_source_counts: Counter,
+    imputation_summary: list[list[Any]],
+    original_missing: pd.Series,
     invalid_numeric: list[dict[str, Any]],
     hard_anomalies: list[dict[str, Any]],
     outlier_counts: dict[str, int],
@@ -490,14 +591,13 @@ def build_report(
     months = sorted(audit["_SOURCE_DATE"].map(month_key).unique())
     target_mask = (
         audit["_SOURCE_FILE"].eq("202602.xls")
-        & audit["_SOURCE_SHEET"].isin({"01.02", "10.02", "20.02"})
         & audit["NTU"].isna()
     )
 
     structural_masks: dict[str, pd.Series] = {}
     missing_rows: list[list[Any]] = []
     monthly_missing_rows: list[list[Any]] = []
-    for column in STANDARD_COLUMNS[2:]:
+    for column in OUTPUT_COLUMNS[2:]:
         missing = audit[column].isna()
         structural = pd.Series(False, index=audit.index)
         for month in months:
@@ -519,6 +619,8 @@ def build_report(
         missing_rows.append(
             [
                 column,
+                int(original_missing[column]),
+                int(original_missing[column] - missing.sum()),
                 int(missing.sum()),
                 f"{missing.mean():.2%}",
                 int((missing & structural & ~column_target).sum()),
@@ -606,22 +708,38 @@ def build_report(
 - 数据量：{total} 条两小时观测。
 - 时间范围：{audit["_TIMESTAMP"].min():%Y-%m-%d %H:%M} 至 {audit["_TIMESTAMP"].max():%Y-%m-%d %H:%M}。
 - 时间戳重复：{duplicate_count} 条。
-- 输出结构：1 个工作表、{len(STANDARD_COLUMNS)} 个题目字段。
+- 输出结构：1 个工作表、{len(OUTPUT_COLUMNS)} 个字段；已删除全空的 `18ML LEVEL`、`18ML FLOW` 和文本备注 `REMARKS`。
 - 日期处理：{date_note}
-- 2026 年 2 月 `NTU`：整月 336 个均为空，其中题目要求预测的 2 月 1、10、20 日来源 Sheet 共 {int(target_mask.sum())} 个；均未插补。
+- 2026 年 2 月 `NTU`：整月 {int(target_mask.sum())} 个预测目标均保持为空，未参与插补。
+
+### 缺失值处理
+
+- 连续缺失不超过 {MAX_IMPUTE_GAP} 个时点（12 小时）、且缺口两端都有有效值时，连续变量采用线性插值。
+- 两个泵状态字段采用上下文众数，避免产生小数泵数量。
+- 超过 12 小时的连续缺失保持不变。
+- 2026 年 2 月全部 `NTU` 预测目标保持缺失。
+- 插补值是建模用估计值，不属于原始实测数据。
+
+{markdown_table(
+    ["字段", "原始缺失", "已填补", "保留缺失", "方法"],
+    sorted(imputation_summary, key=lambda row: OUTPUT_COLUMNS.index(row[0])),
+)}
 
 ### 字段说明
 
 字段含义依据题目附录整理。题目没有给出的物理单位不作推断。
 
-{markdown_table(["字段", "中文含义", "单位或备注"], DATA_DICTIONARY)}
+{markdown_table(
+    ["字段", "中文含义", "单位或备注"],
+    [row for row in DATA_DICTIONARY if row[0] in OUTPUT_COLUMNS],
+)}
 
 ### 字段缺失统计
 
 “整月未提供”指某字段在某来源月份全部为空；“普通漏测”排除了整月未提供和预测目标留空。
 
 {markdown_table(
-    ["字段", "缺失数", "缺失率", "整月未提供", "预测目标", "普通漏测"],
+    ["字段", "原始缺失", "已填补", "保留缺失", "保留缺失率", "整月未提供", "预测目标", "普通漏测"],
     missing_rows,
 )}
 
@@ -708,9 +826,9 @@ def write_workbook(output: pd.DataFrame) -> None:
     sheet.row_dimensions[1].height = 24
     sheet.column_dimensions["A"].width = 12
     sheet.column_dimensions["B"].width = 10
-    for index in range(3, len(STANDARD_COLUMNS) + 1):
-        column = STANDARD_COLUMNS[index - 1]
-        width = 28 if column == "REMARKS" else max(11, min(20, len(column) + 2))
+    for index in range(3, len(OUTPUT_COLUMNS) + 1):
+        column = OUTPUT_COLUMNS[index - 1]
+        width = max(11, min(20, len(column) + 2))
         sheet.column_dimensions[get_column_letter(index)].width = width
     for cell in sheet["A"][1:]:
         cell.number_format = "yyyy-mm-dd"
@@ -738,7 +856,7 @@ def verify_output(expected_rows: int) -> None:
             f"Expected {expected_rows + 1} worksheet rows, found {sheet.max_row}"
         )
     headers = [cell.value for cell in sheet[1]]
-    if headers != STANDARD_COLUMNS:
+    if headers != OUTPUT_COLUMNS:
         raise AssertionError(f"Unexpected headers: {headers}")
     if sheet.freeze_panes != "A2":
         raise AssertionError("Freeze panes missing")
@@ -785,15 +903,18 @@ def main() -> None:
     )
     audit, invalid_numeric = coerce_numeric_columns(audit)
     hard_anomalies = detect_hard_range_anomalies(audit)
+    audit, imputation_summary, original_missing = impute_short_gaps(audit)
     outlier_counts, outlier_examples = detect_hampel_outliers(audit)
 
-    output = audit[STANDARD_COLUMNS].copy()
+    output = audit[OUTPUT_COLUMNS].copy()
     write_workbook(output)
     report = build_report(
         audit,
         repairs,
         pump_corrections,
         pump_source_counts,
+        imputation_summary,
+        original_missing,
         invalid_numeric,
         hard_anomalies,
         outlier_counts,
