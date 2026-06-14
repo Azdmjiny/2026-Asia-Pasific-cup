@@ -60,7 +60,6 @@ logs/
 # =========================
 ~$*.docx
 ~$*.xlsx
-*.tmp
 
 # =========================
 # But allow table templates if needed
@@ -75,4 +74,3 @@ logs/
 final_submit/
 *.zip
 *.rar
-temp/
