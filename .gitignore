@@ -35,6 +35,7 @@ desktop.ini
 # =========================
 # Large model / output files
 # =========================
+codes/outputs/
 outputs/
 output/
 runs/
