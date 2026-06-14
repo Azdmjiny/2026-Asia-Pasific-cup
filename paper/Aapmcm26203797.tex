@@ -125,12 +125,6 @@
 
 \section{问题分析}
 \subsection{问题一的分析}
-首先对原始监测数据进行质量审计和缺失值处理，
-随后利用相关性分析、随机森林、XGBoost 及 SHAP 等方法识别影响出厂水浊度的关键因素。
-考虑供水处理过程存在时间延迟效应，
-进一步采用交叉相关分析构建时滞特征，
-最终建立 Random Forest、XGBoost 和 GAM 预测模型，
-实现出厂水浊度预测。
 
 \subsection{问题二的分析}
 
@@ -532,185 +526,184 @@ GAM & 0.1814 & 0.2245 & 0.3445 & 51.89 \\
 
 总体而言，所建立的 Random Forest 模型能够较好地刻画出厂水浊度与关键运行变量之间的复杂非线性关系，并为指定日期的水质预测提供可靠依据。预测结果表明，研究期间水厂整体运行状态稳定，出厂水浊度满足饮用水安全要求。
 
+%=========================================================
+\section{问题二：滤后水浊度动态建模与时滞效应分析}
 
-\section{问题二：滤后水浊度的时滞动态模型}
+%---------------------------------------------------------
+\subsection{数据预处理}
 
-\subsection{滤后水浊度影响机制分析}
+除常规缺失值填补与标准化处理外，考虑到部分变量具有明确的物理和化学意义，本文进一步结合水处理机理对相关特征进行重构，以提高变量的工程解释性。该处理同时用于问题二和问题三的后续建模过程。
+%cite!!!!!!!!!!!!!!!!!!!!!!!!
+对于原水 pH（R/W PH），由于 pH 本质上是氢离子浓度的负对数表示形式，而混凝反应过程更直接受到氢离子浓度影响，因此采用
 
-滤后水浊度 $FILT.NTU$ 是衡量混凝、沉淀和过滤效果的重要指标。原水浊度反映进入处理系统的颗粒负荷，原水 pH 会影响混凝剂效果，矾投加量是调控混凝反应的关键变量，原水流量则影响反应时间和过滤负荷。上述变量对滤后水浊度的影响并非即时发生，而是存在不同程度的时间滞后。
+\[
+[H^+]=10^{-pH}
+\]
+
+将 pH 转换为氢离子浓度，并进一步标准化处理，记为$RW\_PH\_{10POWER\_STD}$.
 
 
 
+对于混凝剂投加量，原始数据同时记录了明矾浓度（ALUM）和投加流量（F/RIDE）。参考相关供水工艺文献中有效铝投加量的计算方法，将二者折算为统一的有效投药量指标。同时，在数据审计过程中发现，F/RIDE 中存在少量异常取值（如 0.5、100 等），其数量级远高于正常运行区间，直接参与折算会导致有效投药量严重失真。因此，本文首先定义经过异常处理后的投加流量：
+
+\[
+F/RIDE_{\mathrm{clean}}
+=
+\begin{cases}
+F/RIDE, & 0<F/RIDE\le 0.01,\\
+0, & \text{otherwise}.
+\end{cases}
+\]
+
+即仅保留正常范围内的小剂量投加记录参与有效铝含量计算，而将明显异常的加药状态剔除出折算过程。
+
+随后构造有效投药量特征：
+
+\[
+AL\_DOSE
+=
+56.9\times ALUM
++
+81.0\times F/RIDE_{\mathrm{clean}}.
+\]
+
+与此同时，为保留异常加药工况信息，进一步定义异常加药状态变量：
+
+\[
+FRIDE\_ABNORMAL
+=
+1(F/RIDE>0.01),
+\]
+其中 \(1(\cdot)\) 为示性函数。
+
+%---------------------------------------------------------
+\subsection{输入变量构建与时滞识别}
+除题目要求分析的原水浊度（R/W NTU）、原水流量（R/W FLOW）外，考虑到部分变量具有明确的物理化学意义，本文采用预处理阶段构造的机理特征作为输入变量，包括氢离子浓度特征（RW\_PH\_10POWER\_STD）、有效投药量特征（AL\_DOSE）以及异常加药状态特征（FRIDE\_ABNORMAL）。此外，考虑到滤后水浊度具有显著的时间连续性，本文同时引入滤后水浊度历史值（FILT.NTU history）作为状态变量，以刻画系统可能存在的动态记忆效应。
+
+问题二采用与问题一相同的时滞分析方法，对各候选变量构造多阶滞后特征，并计算其与当前滤后水浊度之间的 Spearman 相关系数。
+
+根据分析结果，得到各变量对应的最优时滞参数，如表~\ref{tab:p2_lag} 所示。
+
+\begin{table}[H]
+\centering
+\caption{关键变量最优时滞特征及对应相关性}
+\label{tab:p2_lag}
+\begin{tabular}{cccc}
+\toprule
+变量 & 最优滞后阶数 & 时间延迟(h) & Spearman相关系数\\
+\midrule
+R/W NTU & lag6 & 12 & 0.090\\
+RW\_PH\_10POWER\_STD & lag6 & 12 & 0.027\\
+AL\_DOSE & lag0 & 0 & -0.054\\
+FRIDE\_ABNORMAL & lag2 & 4 & -0.124\\
+R/W FLOW & lag6 & 12 & 0.060\\
+FILT.NTU历史值 & lag1 & 2 & 0.926\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+由表~\ref{tab:p2_lag}可见，各变量与滤后水浊度之间均存在不同程度的时滞效应。其中，R/W NTU、R/W FLOW 和 RW\_PH\_10POWER\_STD 的最优时滞均为 12 h，AL\_DOSE 与 FRIDE\_ABNORMAL 分别对应 0 h 和 4 h 的影响延迟。与此同时，滤后水浊度历史值在 lag1 下达到最高相关性（Spearman = 0.926），显著高于其他变量，表明系统具有较强的动态惯性特征。后续将结合机器学习模型进一步分析各因素的影响作用。
+
+%---------------------------------------------------------
+\subsection{动态预测模型构建和结果分析}
+\subsubsection{动态模型构建与系统评价}
+根据时滞分析结果，分别选取原水浊度、原水 pH、明矾投加量、混凝剂投加状态以及原水流量对应的最优滞后特征
+根据表~\ref{tab:p2_lag}的分析结果，
+最终选取 R/W NTU(lag6)、R/W FLOW(lag6)、
+RW\_PH\_10POWER\_STD(lag6)、
+AL\_DOSE(lag0)、
+FRIDE\_ABNORMAL(lag2)
+以及 FILT.NTU(lag1)
+作为模型输入特征。
+
+由此建立滤后水浊度预测问题：
+
+\[
+FILT_t=f(X_t).
+\]
+
+考虑到滤后水浊度与各影响因素之间可能存在复杂的非线性关系，本文分别采用多层感知机（MLP）、随机森林（Random Forest）和 LightGBM 三种机器学习模型进行建模。其中，多层感知机通过非线性激活函数学习输入变量与输出变量之间的复杂映射关系；随机森林通过集成多棵决策树提高模型稳定性并降低过拟合风险；LightGBM 则利用梯度提升框架实现高效的非线性拟合能力。
+
+为评估模型泛化能力，本文随机抽取 20\% 的样本作为测试集，其余样本用于模型训练。三种模型在测试集上的预测结果如表~\ref{tab:p2_model_compare} 所示。
+
+\begin{table}[H]
+\centering
+\caption{不同模型在测试集上的预测性能比较}
+\label{tab:p2_model_compare}
+\begin{tabular}{cccc}
+\toprule
+模型 & MAE & RMSE & $R^2$ \\
+\midrule
+Random Forest & 0.0700 & 0.3457 & 0.7070 \\
+MLP & 0.0717 & 0.3515 & 0.6971 \\
+LightGBM & 0.0809 & 0.3529 & 0.6947 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+由表~\ref{tab:p2_model_compare}可见，三种模型均取得了较好的预测效果，决定系数均接近 0.70。其中，Random Forest 在 MAE、RMSE 和 $R^2$ 指标上均表现最佳，说明其能够更有效地捕捉输入变量与滤后水浊度之间的非线性关系。MLP 与 LightGBM 的预测性能略低，但整体差异不大，表明经过时滞处理后的输入变量能够较稳定地反映滤后水浊度的变化规律。
+
+
+为了进一步分析滤后水浊度变化的驱动机制，本文采用置换重要性（Permutation Importance）方法评估各输入变量对模型预测结果的贡献程度。三种模型得到的变量重要性结果如图~\ref{fig:p2_importance1} 所示。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{images/p2_feature_importance1.png}
+\caption{三种模型的置换重要性分析结果}
+\label{fig:p2_importance1}
+\end{figure}
+
+由图~\ref{fig:p2_importance1}可知，滤后水浊度历史值与当前滤后水浊度之间具有极强相关性（Spearman = 0.926），远高于各外部工艺变量。因此，仅分析外部变量预测模型无法较好的判断各影响因素对滤后水浊度的实际贡献程度。为进一步区分外部变量影响与系统历史状态影响，本文在下一节构建了线性组合模型进行贡献度分析。
+%---------------------------------------------------------
+\subsection{系统惯性与变量贡献分析}
+若直接将滤后水浊度历史值与外部变量共同输入机器学习模型，模型往往优先利用历史状态信息完成预测，从而掩盖外部变量的真实贡献。在这种情况下，变量重要性更多反映模型对历史状态的依赖程度，而难以准确区分系统惯性与外部驱动因素的相对作用。为此，本文首先利用外部变量单独建立预测模型，获得仅由原水指标和运行变量决定的预测结果 $\hat y_{\mathrm{raw}}$；随后将其与滤后水浊度历史值构建线性组合模型：
+
+
+\[\beta_1 \hat y_{\mathrm{raw}}
++
+\beta_2 FILT_{t-1}
++
+b.
+\]
+
+其中，$\hat y_{\mathrm{raw}}$ 表示由原水指标和运行变量得到的预测结果，$FILT_{t-1}$ 表示系统历史状态信息。
+三种组合模型均获得与原模型相近的预测性能。其中，以 LightGBM 为基础模型的组合方案表现最佳，其对应的线性组合形式为：
+
+\[0.119\hat y_{\mathrm{LightGBM}}
++
+0.800FILT_{t-1}
++
+0.015.
+\]
+由于基于 LightGBM 的线性组合模型取得最佳预测效果，因此进一步选取其对应的基础模型作为代表模型，对外部变量进行解释分析。
+对该模型进行外界变量的重要性分析，结果如图~\ref{fig:p2_importance2}所示。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.75\textwidth]{images/p2_feature_importance2.png}
+\caption{LightGBM模型的变量重要性分析结果}
+\label{fig:p2_importance2}
+\end{figure}
+
+
+
+
+从图~\ref{fig:p2_importance2}可以看出，在所有外部变量中，原水流量（R/W FLOW）表现出最高的重要性，其贡献明显高于其他变量，是影响滤后水浊度变化的主要外部驱动因素。原水浊度（R/W NTU）次之，说明原水水质状况仍会对最终出水质量产生一定影响。
+
+相比之下，有效投药量（AL\_DOSE）、氢离子浓度特征（RW\_PH\_10POWER\_STD）以及异常加药状态（FRIDE\_ABNORMAL）的重要性相对较低，表明在当前运行条件下，这些工艺参数的变化对滤后水浊度的直接影响较为有限。
+
+结合时滞分析结果可知，原水流量和原水浊度均对应约 12 h 的最优时滞，说明原水条件变化经过混凝、沉淀及过滤等处理环节后，会逐步传递并最终影响滤后水浊度。总体而言，原水流量和原水浊度是影响滤后水浊度变化的主要外部因素，而其他工艺变量更多表现为辅助调节作用。
+%==========================================================
 \section{问题三：基于水力停留时间与 GRU 的出厂水浊度多步预测模型}
-由于 18ML LEVEL 和 18ML FLOW 在本数据集中完全缺失，本文不将其纳入模型，而采用 C/W WELL LEVEL 与 T/W FLOW 构造近似水力停留时间特征。清水池具有调蓄和混合作用，当前出厂水浊度通常受到过去一段时间滤后水和清水池状态的共同影响。若用 \(L_t\) 表示清水池水位，用 \(Q_t\) 表示出厂水流量，则近似水力停留时间特征定义为
-\begin{equation}
-  HRT_t=\frac{L_t}{Q_t+\epsilon},
-\end{equation}
-其中 \(\epsilon\) 为防止分母为零的极小常数。
-\subsection{水力停留时间特征构造}
 
-清水池具有调蓄和混合作用，当前出厂水浊度通常受到过去一段时间滤后水和清水池状态的共同影响。若用 $L_t$ 表示清水池水位，用 $Q_t$ 表示出厂水流量，则近似水力停留时间特征定义为
-\begin{equation}
-  HRT_t=\frac{L_t}{Q_t+\epsilon},
-\end{equation}
-其中 $\epsilon$ 为防止分母为零的极小常数。
-
-\subsection{多步预测问题定义}
-
-由于采样间隔为 2 小时，未来 1--12 小时预测可转化为未来 1--6 步预测。设 $h=1,2,\ldots,6$，则多步预测目标为
-\begin{equation}
-  \hat{y}_{t+h}=g\left(y_{t-k:t},z_{t-k:t},X_{t-k:t},HRT_{t-k:t}\right),
-\end{equation}
-其中 $k$ 表示历史窗口长度。
-
-\subsection{GRU 模型结构}
-
-GRU 通过更新门和重置门刻画历史序列信息，其基本结构为
-\begin{align}
-  r_t &= \sigma(W_r x_t+U_r h_{t-1}+b_r),\\
-  u_t &= \sigma(W_u x_t+U_u h_{t-1}+b_u),\\
-  \tilde{h}_t &= \tanh(W_h x_t+U_h(r_t\odot h_{t-1})+b_h),\\
-  h_t &= (1-u_t)\odot h_{t-1}+u_t\odot \tilde{h}_t .
-\end{align}
-
-\subsection{多步预测性能评价}
-
-\begin{table}[H]
-\centering
-\caption{不同预测步长下模型预测性能}
-\begin{tabular}{ccccc}
-\toprule
-预测步长 & 对应时间 & $RMSE$ & $MAE$ & $R^2$ \\
-\midrule
-1 step & 2 h &  &  &  \\
-2 steps & 4 h &  &  &  \\
-3 steps & 6 h &  &  &  \\
-4 steps & 8 h &  &  &  \\
-5 steps & 10 h &  &  &  \\
-6 steps & 12 h &  &  &  \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{指定日期 7:00 至 19:00 预测结果}
-
-\begin{table}[H]
-\centering
-\caption{2026 年 2 月指定日期 7:00 至 19:00 出厂水 NTU 预测结果}
-\begin{tabular}{cccccc}
-\toprule
-日期 & 时间 & 2h预测 & 4h预测 & 6h预测 & 12h预测 \\
-\midrule
-2026-02-01 & 07:00 &  &  &  &  \\
-2026-02-01 & 09:00 &  &  &  &  \\
-2026-02-01 & 11:00 &  &  &  &  \\
-2026-02-01 & 13:00 &  &  &  &  \\
-2026-02-01 & 15:00 &  &  &  &  \\
-2026-02-01 & 17:00 &  &  &  &  \\
-2026-02-01 & 19:00 &  &  &  &  \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{输入变量敏感性分析}
-
-为分析原水水质突变和矾投加调整对未来出厂水浊度预测结果的影响，本文设计情景扰动实验。设原始输入为 $X_t$，扰动后输入为 $X'_t$，则相对敏感度定义为
-\begin{equation}
-  S_i=\frac{\Delta \hat{y}/\hat{y}}{\Delta x_i/x_i} .
-\end{equation}
-
+%==========================================================
 \section{问题四：水质风险评价模型}
 
-\subsection{风险评价指标构建}
 
-以出厂水浊度 $y_t$ 为核心指标，根据生活饮用水浊度限值 $NTU\leq 1$ 定义超标幅度
-\begin{equation}
-  E_t=\max(0,y_t-1).
-\end{equation}
+\section{模型的评价}
 
-同时定义浊度波动指标
-\begin{equation}
-  V_t=|y_t-y_{t-1}|.
-\end{equation}
 
-设 $D_t$ 表示连续异常持续时间，则综合风险指数为
-\begin{equation}
-  R_t=\alpha E_t+\beta D_t+\gamma V_t,
-\end{equation}
-其中 $\alpha,\beta,\gamma$ 为权重，满足 $\alpha+\beta+\gamma=1$。
 
-\subsection{风险等级划分}
-
-\begin{table}[H]
-\centering
-\caption{水质风险等级划分标准}
-\begin{tabularx}{0.95\textwidth}{l L L}
-\toprule
-风险等级 & 判定依据 & 含义 \\
-\midrule
-安全 & 未超标且波动较小 & 水质稳定达标 \\
-低风险 & 接近阈值或短时轻微波动 & 需要关注 \\
-中风险 & 短时超标或波动明显 & 需要采取调控措施 \\
-高风险 & 持续超标或严重异常 & 需要立即干预 \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\subsection{2026 年近三个月风险评价结果}
-
-\begin{table}[H]
-\centering
-\caption{2026 年 1--3 月各风险等级天数占比}
-\begin{tabular}{lcc}
-\toprule
-风险等级 & 天数 & 占比 \\
-\midrule
-安全 &  &  \\
-低风险 &  &  \\
-中风险 &  &  \\
-高风险 &  &  \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[H]
-\centering
-\caption{2026 年 3 月每日风险分类结果}
-\begin{tabular}{ccccc}
-\toprule
-日期 & 日均 NTU & 日最大 NTU & 连续超标时长/h & 风险等级 \\
-\midrule
-2026-03-01 &  &  &  &  \\
-2026-03-02 &  &  &  &  \\
-\multicolumn{5}{c}{\kaishu 此处补充 3 月完整日期结果} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\section{模型评价与敏感性分析}
-
-本节从预测精度、解释性、稳定性和实际应用价值四个方面评价模型。预测精度采用 $RMSE$、$MAE$ 和 $R^2$ 衡量；解释性通过 SHAP 重要性、时滞参数和风险指标构成体现；稳定性通过不同月份、不同预测步长和输入扰动情景下的模型表现进行检验。
-
-\section{模型优缺点}
-
-\subsection{模型优点}
-\begin{enumerate}[label=（\arabic*）]
-  \item 充分考虑水处理过程的时间滞后特征，避免静态建模的局限；
-  \item 将 XGBoost、SHAP 与 GRU 结合，兼顾预测精度和可解释性；
-  \item 引入近似水力停留时间特征，使模型具有一定机理解释；
-  \item 风险评价同时考虑超标幅度、持续时间和波动程度，较单一阈值判断更合理。
-\end{enumerate}
-
-\subsection{模型不足}
-\begin{enumerate}[label=（\arabic*）]
-  \item 清水池水力停留时间只能由水位和流量近似表征，可能与真实停留时间存在偏差；
-  \item 部分变量缺失率较高，可能影响完整变量模型的稳定性；
-  \item 对极端异常工况的预测能力依赖历史样本覆盖情况。
-\end{enumerate}
-
-\section{结论}
-
-本文围绕自来水厂水浊度预测与风险评估问题，构建了从数据预处理、影响因素筛选、时滞动态建模、多步预测到风险分级的完整建模框架。后续将在完成数据清洗和模型训练后，补充各问题的具体数值结果、预测表格和图形分析。
 
 \newpage
 
