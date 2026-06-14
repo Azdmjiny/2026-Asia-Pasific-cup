@@ -1,0 +1,2 @@
+﻿lag1_pearson,lag1_spearman,lag12_pearson_1day,lag24_pearson_2days,lag36_pearson_3days,pearson_daily_local_peak_count,spearman_daily_local_peak_count,short_inertia_flag,daily_corr_flag,daily_peak_flag,conclusion
+0.8813765833919253,0.9699168243997435,0.4606791970156171,0.2074354179313509,0.16258235690130052,0,0,True,False,False,NTU mainly shows short-term temporal inertia; evidence for stable daily periodicity is limited.
