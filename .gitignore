@@ -1,0 +1,131 @@
+# =========================
+# Python cache
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.apmcm-torch/
+*.egg-info/
+
+# =========================
+# Jupyter Notebook
+# =========================
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# =========================
+# VS Code / IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================
+# Large model / output files
+# =========================
+outputs/
+output/
+runs/
+models/
+checkpoints/
+
+*.joblib
+*.pkl
+*.pickle
+*.pth
+*.pt
+*.ckpt
+*.onnx
+
+# =========================
+# Temporary files
+# =========================
+temp/
+tmp/
+*.tmp
+*.bak
+*.swp
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# LaTeX auxiliary files
+# =========================
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+*.xdv
+*.nav
+*.snm
+*.vrb
+
+# Keep source tex files
+!*.tex
+
+# =========================
+# LaTeX build folders
+# =========================
+paper/build/
+paper/_minted*/
+_minted*/
+
+# =========================
+# Optional: ignore compiled PDFs
+# 如果你想把最终 PDF 也传到 GitHub，就注释掉下面两行
+# =========================
+paper/*.pdf
+*.pdf
+
+*.aux
+*.log
+*.out
+*.synctex.gz
+
+# 但保留最终论文 PDF
+!paper/Aapmcm26203797.pdf
+# =========================
+# Excel temporary files
+# =========================
+~$*.xlsx
+~$*.xls
+
+# =========================
+# Data policy
+# =========================
+# 默认不忽略 data，因为比赛项目可能需要保留数据。
+# 如果 merged.xlsx 很大或不想公开数据，可以取消下面两行注释：
+# data/
+# *.xlsx
+
+# =========================
+# Reports / exported tables
+# =========================
+report/*.xlsx
+report/*.csv
+problem/*.xlsx
+problem/*.csv
+temp/
