@@ -63,27 +63,6 @@ logs/
 *.tmp
 
 # =========================
-# Python model outputs
-# =========================
-models/
-checkpoints/
-*.pkl
-*.joblib
-*.pt
-*.pth
-*.h5
-*.keras
-
-# =========================
-# Large generated outputs
-# =========================
-outputs/
-results/
-figures/generated/
-predictions/
-cleaned_data/
-
-# =========================
 # But allow table templates if needed
 # =========================
 !templates/*.xlsx
